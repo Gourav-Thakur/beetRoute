@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Complaints</title>
+</head>
+<body>
+  {% if request.user.role == 'cro' %}
+    <h3>Add Complaint</h3>
+    <form id="complaint-form">
+      <input type="text" placeholder="Retailer Name" name="retailer_name" required>
+      <input type="text" placeholder="Customer Name" name="customer_name" required>
+      <input type="text" placeholder="Pincode" name="pincode" required>
+      <button type="submit">Submit</button>
+    </form>
+    <hr>
+  {% endif %}
+
+  <h2>Complaints</h2>
+  <table id="complaints-table">
+    <thead>
+      <tr>
+        <th>Retailer</th>
+        <th>Customer</th>
+        <th>Pincode</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const role = "{{ request.user.role }}";
+
+    function fetchComplaints() {
+      fetch('/complaints/api/')
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector('#complaints-table tbody');
+          tbody.innerHTML = '';
+          data.forEach(c => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${c.retailer_name}</td>
+              <td>${c.customer_name}</td>
+              <td>${c.pincode}</td>
+              <td>${
+                role === 'asm'
+                  ? `<select onchange="updateStatus(${c.id}, this.value)">
+                      ${['pending','approved','rejected'].map(s =>
+                        `<option value="${s}" ${c.feedback_status===s?'selected':''}>${s}</option>`
+                      ).join('')}
+                    </select>`
+                  : c.feedback_status
+              }</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        });
+    }
+
+    function updateStatus(id, status) {
+      fetch(`/complaints/api/${id}/`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ feedback_status: status })
+      });
+    }
+
+    function alertPending() {
+      fetch('/complaints/api/pending_exists/')
+        .then(res => res.json())
+        .then(data => {
+          if (data.pending) alert('You have pending complaints to review');
+        });
+    }
+
+    document.getElementById("complaint-form")?.addEventListener("submit", function(e) {
+      e.preventDefault();
+      const form = e.target;
+      const data = {
+        retailer_name: form.retailer_name.value,
+        customer_name: form.customer_name.value,
+        pincode: form.pincode.value
+      };
+      fetch('/complaints/api/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify(data)
+      })
+      .then(res => {
+        if (!res.ok) throw new Error("Failed to add complaint");
+        return res.json();
+      })
+      .then(() => {
+        fetchComplaints();
+        form.reset();
+      })
+      .catch(err => alert(err.message));
+    });
+
+    function getCookie(name) {
+      let cookieValue = null;
+      if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+          const cookie = cookies[i].trim();
+          if (cookie.substring(0, name.length + 1) === (name + '=')) {
+            cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+            break;
+          }
+        }
+      }
+      return cookieValue;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      fetchComplaints();
+      if (role === 'asm') setInterval(alertPending, 10000);
+    });
+  </script>
+</body>
+</html>
